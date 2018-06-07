@@ -15,11 +15,19 @@
 #include <QNetworkInterface>
 #include <QProcess>
 
+
+
 #include "cJSON.h"
 #include <QtNetwork>
 #include "qftp.h"
 #include "V4l2CameraControl.h"
 #include "gpio.h"
+#include "watchdog.h"
+
+#include "QtSerialPort/QSerialPort"
+#include "QtSerialPort/QSerialPortInfo"
+#include "QtSerialPort/QtSerialPortDepends"
+
 
 typedef struct
 {
@@ -43,6 +51,7 @@ public:
     QTimer * m_timer_publish;
     QTimer * m_timer;
     QTimer * m_timer_camera;
+    QTimer * m_timer_feedDog;
 
     QUrl * m_ftpurl;
     QFtp * m_ftp;
@@ -50,6 +59,12 @@ public:
     int state_flag = 0;
 
     Gpio * m_gpio;
+    WatchDog * m_watchdog;
+    QSerialPort * m_SerialPort;//串口对象
+
+    QString localip;
+    QString netmask;
+    QString gateway;
 
     QString mqttHostName;
     quint16 mqttHostPort;
@@ -60,12 +75,17 @@ public:
 
     QNetworkAccessManager * manager;
 
+    //com receive Qstring
+    QString receiveDataappend;
+
 
 public:
 
     void mysleep(int msec);
 
     void setDeviceId(quint16 id);
+
+    void setloaclNetWork(QString localip,QString netmask,QString gateway);
     void setMqttServerAddr(QString hostname, quint16 port);
     void setMqttSubscribeTopic(QString topic);
     void setMqttPublishTopic(QString topic);
@@ -78,6 +98,9 @@ public:
 
     int onV4l2GetJgp();
     int onOpenLock(int index);
+
+    //comSerial
+    void onSetSerialCom();
 
     //AM2302
     uint8_t AM2302_ReadByte(void);
@@ -92,9 +115,13 @@ public slots:
 
    void onMqttSubscribeReceive(const QByteArray &message,
                                const QMqttTopicName &topic);
+
+   void on_comserial_read();
+
     void showTime();
     void timerPublish();
     void timerCamera();
+    void timerFeedDog();
 };
 
 #endif // QHLMQTT_H

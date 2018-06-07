@@ -14,6 +14,9 @@ QHLMqtt::QHLMqtt(QObject *parent) :
     m_ftp = new QFtp(this);
     manager = new QNetworkAccessManager();
     m_gpio = new Gpio();
+    m_SerialPort = new QSerialPort(this);
+    m_watchdog = new WatchDog();
+    m_timer_feedDog = new QTimer(this);
     //receive data
     connect(m_client, &QMqttClient::messageReceived, this, [this](const QByteArray &message, const QMqttTopicName &topic) {
             onMqttSubscribeReceive(message,topic);});
@@ -22,9 +25,24 @@ QHLMqtt::QHLMqtt(QObject *parent) :
     connect(m_timer,SIGNAL(timeout()),this,SLOT(showTime()));
     connect(m_timer_publish,SIGNAL(timeout()),this,SLOT(timerPublish()));
     connect(m_timer_camera,SIGNAL(timeout()),this,SLOT(timerCamera()));
+    connect(m_timer_feedDog,SIGNAL(timeout()),this,SLOT(timerFeedDog()));
+    connect(m_client, &QMqttClient::disconnected, this, &QHLMqtt::onMqttDisconnected);
+
+    //serial
+    connect(m_SerialPort,SIGNAL(readyRead()),this,SLOT(on_comserial_read()));
+    //watch dog
+
+
+    onSetSerialCom();
 
     //m_timer->start(5000);
     //printf("\r\n AM2302 START \r\n");
+
+
+
+    m_timer_feedDog->start(15000);
+
+    state_flag = 0;
 }
 
 QHLMqtt::~QHLMqtt()
@@ -45,6 +63,34 @@ void QHLMqtt::mysleep(int msec)
 void QHLMqtt::setDeviceId(quint16 id)
 {
     deviceId = id;
+}
+
+void QHLMqtt::setloaclNetWork(QString localip, QString netmask, QString gateway)
+{
+    QProcess process;
+    QString cmd = "ifconfig  eth0 ";
+    cmd.append(localip);
+    process.start(cmd);
+    process.close();
+    process.waitForFinished();
+
+   cmd = "ifconfig eth0 netmask ";
+   cmd.append(netmask);
+
+    process.start(cmd);
+    process.close();
+    process.waitForFinished();
+
+    cmd = "route add default gw ";
+    cmd.append(gateway);
+
+     process.start(cmd);
+     process.close();
+     process.waitForFinished();
+
+    this->localip = localip;
+    this->netmask = netmask;
+    this->gateway = gateway;
 }
 
 void QHLMqtt::setMqttServerAddr(QString hostname, quint16 port)
@@ -71,6 +117,9 @@ int QHLMqtt::onMqttConnectToServer()
         m_client->setHostname(mqttHostName);
         m_client->setPort(mqttHostPort);
         m_client->connectToHost();
+
+        m_timer_publish->start(60000);// in order to up again
+
         return 1;
     }
 
@@ -88,7 +137,7 @@ int QHLMqtt::onMqttSubscribeDataToServer()
 {
     if(m_client->state() == QMqttClient::Connected){
         m_client->subscribe(mqttSubscribeTopic);
-        printf("\r\n ---  subscribe ok ---\r\n");
+        printf("\r\n ---  subscribe ok @---\r\n");
         mysleep(10);
         //TODO first push {"deviceid":2156,"type":"humiture","humidity":number1,"temperature":number2}
         QString pushdata = "{\"deviceid\":";
@@ -99,9 +148,13 @@ int QHLMqtt::onMqttSubscribeDataToServer()
         pushdata.append(QString::number(55.4));
         pushdata.append("}");
 
-        qDebug() << pushdata;
+       // qDebug() << pushdata;
+        printf("\r\n ---  publish ok ---\r\n");
         onMqttPublishDataToServer(pushdata.toUtf8());
         m_timer_publish->start(60000);
+        printf("\r\n ---  onFtpConnectToServer ---\r\n");
+        onFtpConnectToServer();
+
         return 0;
     }
     printf("\r\n ---  subscribe error ---\r\n");
@@ -171,8 +224,38 @@ int QHLMqtt::onOpenLock(int index)
         return -1;
     }
 
+    //push  {"deviceid":2156,"type":"lock","state":"open","index":0}
+    QString pushData = "{\"deviceid\":";
+    pushData.append(QString::number(deviceId));
+    pushData.append(",\"type\":\"lock\",\"state\":\"open\",\"index\":0}");
+    //qDebug() << pushData;
+    onMqttPublishDataToServer(pushData.toUtf8());
+
     // camera timer
     m_timer_camera->start(500);
+}
+
+void QHLMqtt::onSetSerialCom()
+{
+    m_SerialPort->setPortName("ttyO1");
+    if(m_SerialPort->open(QIODevice::ReadWrite))
+    {
+        printf("-------%s\n", "serial ttyO1 open success");
+
+        m_SerialPort->setBaudRate(115200);
+        //设置数据位数
+        m_SerialPort->setDataBits(QSerialPort::Data8);
+        //设置奇偶校验
+        m_SerialPort->setParity(QSerialPort::NoParity);
+        //设置停止位
+        m_SerialPort->setStopBits(QSerialPort::OneStop);
+        //设置流控制
+        m_SerialPort->setFlowControl(QSerialPort::NoFlowControl);
+    }
+    else
+    {
+        printf("!!!!!!!!!!serial ttyo1 open failed!!!!!!!!!!\n");
+    }
 }
 
 uint8_t QHLMqtt::AM2302_ReadByte()
@@ -281,32 +364,55 @@ void QHLMqtt::AM2302_Delay(uint16_t time)
 
 void QHLMqtt::onMqttConnected()
 {
+    state_flag = 1;
     onMqttSubscribeDataToServer();
 }
 
+//mqtt disconnected
 void QHLMqtt::onMqttDisconnected()
 {
-
+    printf("\r\n ---- onMqttDisconnected \r\n  ");
 }
 
 void QHLMqtt::showTime()
 {
-    AM2302_Data_TypeDef AM2302_Data;
-    if(AM2302_Read_TempAndHumidity(&AM2302_Data)==1)
-   {
-     printf("读取AM2302成功!-->湿度为%.1f ％RH ，温度为 %.1f℃ \n",AM2302_Data.humidity,AM2302_Data.temperature);
-   }
-   else
-   {
-     printf("EEEERRRRRRRRRR读取AM2302失败!-->湿度为%.1f ％RH ，温度为 %.1f℃ \n",AM2302_Data.humidity,AM2302_Data.temperature);
-   }
+//    AM2302_Data_TypeDef AM2302_Data;
+//    if(AM2302_Read_TempAndHumidity(&AM2302_Data)==1)
+//   {
+//     printf("读取AM2302成功!-->湿度为%.1f ％RH ，温度为 %.1f℃ \n",AM2302_Data.humidity,AM2302_Data.temperature);
+//   }
+//   else
+//   {
+//     printf("EEEERRRRRRRRRR读取AM2302失败!-->湿度为%.1f ％RH ，温度为 %.1f℃ \n",AM2302_Data.humidity,AM2302_Data.temperature);
+//   }
+
+    m_timer->stop();
+
+    //m_ftp->state()
+
+
+    if(m_client->state() == QMqttClient::Disconnected){
+        // disconnected
+        qDebug() << "Disconnected";
+
+        m_timer->stop();
+        m_timer_camera->stop();
+        m_timer_publish->stop();
+
+        m_client->disconnectFromHost();
+        m_ftp->close();
+        m_timer->start(3000);
+
+        this->onMqttConnectToServer();
+
+    }
 
 }
 
 void QHLMqtt::timerPublish()
 {
     //TODO onMqttPublishDataToServer
-    qDebug() << "timerPublish";
+
    // m_timer_publish->stop();
    // onV4l2GetJgp();
    // qDebug() << "onV4l2GetJgp over";
@@ -315,8 +421,28 @@ void QHLMqtt::timerPublish()
   //  onFtpPutFileToServer("2.jpg");
 //    onFtpPutFileToServer("3.jpg");
 
+    if(m_client->state() == QMqttClient::Disconnected || state_flag == 0){
+        // disconnected
+        qDebug() << "Disconnected";
 
-    onMqttPublishDataToServer("{\"deviceid\":2156,\"type\":\"humiture\",\"humidity\":number1,\"temperature\":number2}");
+        m_timer->stop();
+        m_timer_camera->stop();
+        m_timer_publish->stop();
+
+        m_client->disconnectFromHost();
+        m_ftp->close();
+
+        m_timer->start(3000);
+
+        this->onMqttConnectToServer();
+
+    }else{
+        qDebug() << "timerPublish";
+       onMqttPublishDataToServer("{\"deviceid\":2156,\"type\":\"humiture\",\"humidity\":26.5,\"temperature\":35.1}");
+    }
+
+
+
 }
 
 void QHLMqtt::timerCamera()
@@ -355,11 +481,17 @@ void QHLMqtt::timerCamera()
 
 }
 
+void QHLMqtt::timerFeedDog()
+{
+    printf("\r\n timerFeedDog \r\n");
+    m_watchdog->feedDog();
+}
+
 void QHLMqtt::onMqttSubscribeReceive(const QByteArray &message,
                                      const QMqttTopicName &topic)
 {
     //TODO
-    qDebug() << "message:" << message;
+    //qDebug() << "message:" << message;
 
     const char * str = message.data();
     cJSON *root = cJSON_Parse(str);
@@ -377,6 +509,33 @@ void QHLMqtt::onMqttSubscribeReceive(const QByteArray &message,
         }
     }
 
+}
+
+void QHLMqtt::on_comserial_read()
+{
+    //
+    QByteArray requestData = m_SerialPort->readAll();
+    receiveDataappend.append(requestData);
+    qDebug() << " on_comserial_read "<< receiveDataappend;
+
+    //TODO check "open"
+    if( receiveDataappend.contains("open") ){
+        receiveDataappend.clear();
+        int i = 8;
+        do{
+            m_gpio->Write(1,12,1);
+            mysleep(15);
+            m_gpio->Write(1,12,0);
+            mysleep(250);
+            if(m_gpio->Read(1,15) == LOCK_OPENSTATE_LEVEL ){
+                // opened
+                i = 0;
+            }else{
+                i--;
+            }
+        }while(i);
+    }
+    // to be
 }
 
 
