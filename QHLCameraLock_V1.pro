@@ -2,6 +2,7 @@ QT += core network
 QT -= gui
 #QT += script
 CONFIG += c++11
+QT += serialport
 
 TARGET = QHLCameraLock_V1
 CONFIG += console
@@ -15,7 +16,8 @@ SOURCES += main.cpp \
     qftp.cpp \
     qurlinfo.cpp \
     V4l2CameraControl.cpp \
-    gpio.cpp
+    gpio.cpp \
+    watchdog.cpp
 
 # The following define makes your compiler emit warnings if you use
 # any feature of Qt which as been marked deprecated (the exact warnings
@@ -34,7 +36,8 @@ HEADERS += \
     qftp.h \
     qurlinfo.h \
     V4l2CameraControl.h \
-    gpio.h
+    gpio.h \
+    watchdog.h
 
 
 
@@ -42,16 +45,14 @@ HEADERS += \
 
 
 
-#INCLUDEPATH += $$PWD/../Mqtt
-#DEPENDPATH += $$PWD/../Mqtt
 
-
-unix:!macx: LIBS += -L$$PWD/../../../QtMqttCode/mqtt_pc_lib/lib/ -lQt5Mqtt
-
-INCLUDEPATH += /home/qhl/QtMqttCode/qtmqtt_arm/include
-DEPENDPATH += $$PWD/../../../QtMqttCode/mqtt_pc_lib/include
 
 DISTFILES += \
     Readme.txt
 
 
+
+unix:!macx: LIBS += -L$$PWD/../../QtMqttCode/mqtt_pc_lib/lib/ -lQt5Mqtt
+
+INCLUDEPATH += $$PWD/../../QtMqttCode/mqtt_pc_lib/include
+DEPENDPATH += $$PWD/../../QtMqttCode/mqtt_pc_lib/include
