@@ -56,3 +56,7 @@ unix:!macx: LIBS += -L$$PWD/../../QtMqttCode/mqtt_pc_lib/lib/ -lQt5Mqtt
 
 INCLUDEPATH += $$PWD/../../QtMqttCode/mqtt_pc_lib/include
 DEPENDPATH += $$PWD/../../QtMqttCode/mqtt_pc_lib/include
+INCLUDEPATH += /home/qhl/QtMqttCode/qtmqtt_arm/include
+
+
+
