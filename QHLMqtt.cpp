@@ -138,7 +138,7 @@ int QHLMqtt::onMqttSubscribeDataToServer()
     if(m_client->state() == QMqttClient::Connected){
         m_client->subscribe(mqttSubscribeTopic);
         printf("\r\n ---  subscribe ok @---\r\n");
-        mysleep(10);
+        mysleep(2);
         //TODO first push {"deviceid":2156,"type":"humiture","humidity":number1,"temperature":number2}
         QString pushdata = "{\"deviceid\":";
         pushdata.append(QString::number(deviceId));
@@ -437,8 +437,20 @@ void QHLMqtt::timerPublish()
         this->onMqttConnectToServer();
 
     }else{
-        qDebug() << "timerPublish";
-       onMqttPublishDataToServer("{\"deviceid\":2156,\"type\":\"humiture\",\"humidity\":26.5,\"temperature\":35.1}");
+         qDebug() << "cut down mqtt";
+
+        m_timer->stop();
+        m_timer_camera->stop();
+        m_timer_publish->stop();
+
+         m_client->disconnectFromHost();
+         m_ftp->close();
+         m_timer->start(3000);
+         this->onMqttConnectToServer();
+
+
+
+         //onMqttPublishDataToServer("{\"deviceid\":2156,\"type\":\"humiture\",\"humidity\":26.5,\"temperature\":35.1}");
     }
 
 
