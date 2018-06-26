@@ -2,7 +2,8 @@
 #define GPIO_H
 
 #include <QObject>
-
+//
+//fsdf
 //工控机IO引脚配置：
 //gpio1_12 -- 电子锁的驱动信号                 -- 输出模式
 //gpio1_15 -- 电子锁的开关门检测信号       -- 输入模式  opened -- high  closed -- low

@@ -166,12 +166,14 @@ int QHLMqtt::onFtpConnectToServer()
     // in order to mkdir
     m_ftp->connectToHost(mqttHostName,21);
     m_ftp->login("lock_test","Hold?fish:palm");
+    m_ftp->mkdir(QString::number(deviceId));
+    mysleep(1000);
+    m_ftp->close();
 }
 
 int QHLMqtt::onFtpPutFileToServer(QString fileName)
 {
-    m_ftp->mkdir(QString::number(deviceId));
-    m_ftp->close();
+
 
     QUrl url;
     url.setScheme("ftp");
@@ -185,7 +187,7 @@ int QHLMqtt::onFtpPutFileToServer(QString fileName)
     qDebug() << file.isOpen();
     QByteArray data = file.readAll();
 
-    QString filename = "/" +  QString::number(deviceId) + "/";
+    QString filename = "/" +  QString::number(deviceId) + "/" +  QString::number(lockLogId) + "/";
     filename.append(QDateTime::currentDateTime().toString("yyyy-MM-dd_hh:mm:ss.zzz"));
     filename.append(".jpg");
     url.setPath(filename);
@@ -201,6 +203,21 @@ int QHLMqtt::onV4l2GetJgp()
 
 int QHLMqtt::onOpenLock(int index)
 {
+
+    //表示已经开锁了，不需要再次开锁
+    if(m_gpio->Read(1,15) == LOCK_OPENSTATE_LEVEL){
+            QString pushData = "{\"deviceid\":";
+            pushData.append( QString::number(deviceId) );
+            pushData.append( ",\"type\":\"lock\",\"state\":\"opened\",\"index\":" );
+            pushData.append( QString::number(index) );
+            pushData.append(",\"lockLogId\":");
+            pushData.append( QString::number(lockLogId) );
+            pushData.append("}");
+
+            onMqttPublishDataToServer(pushData.toUtf8());
+            return 0;
+      }
+
 
 
     bool isOpened = false;
@@ -221,17 +238,32 @@ int QHLMqtt::onOpenLock(int index)
     }while(i);
 
     if(!isOpened){
+        QString pushData = "{\"deviceid\":";
+        pushData.append( QString::number(deviceId) );
+        pushData.append( ",\"type\":\"lock\",\"state\":\"holdClose\",\"index\":" );
+        pushData.append( QString::number(lockIndex) );
+        pushData.append(",\"lockLogId\":");
+        pushData.append( QString::number(lockLogId) );
+        pushData.append("}");
+
+
+          onMqttPublishDataToServer(pushData.toUtf8());
+
+
         return -1;
     }
 
-    //push  {"deviceid":2156,"type":"lock","state":"open","index":0}
     QString pushData = "{\"deviceid\":";
-    pushData.append(QString::number(deviceId));
-    pushData.append(",\"type\":\"lock\",\"state\":\"open\",\"index\":0}");
-    //qDebug() << pushData;
-    onMqttPublishDataToServer(pushData.toUtf8());
+       pushData.append( QString::number(deviceId) );
+       pushData.append( ",\"type\":\"lock\",\"state\":\"alreadyOpen\",\"index\":" );
+       pushData.append( QString::number(index) );
+       pushData.append(",\"lockLogId\":");
+       pushData.append( QString::number(lockLogId) );
+       pushData.append("}");
+       onMqttPublishDataToServer(pushData.toUtf8());
 
     // camera timer
+       isCameraed = false;
     m_timer_camera->start(500);
 }
 
@@ -455,8 +487,21 @@ void QHLMqtt::timerCamera()
 
     //TODO no man_check
 
-    if( m_gpio->Read(GPIO_MAN_GROUNP,GPIO_MAN_NUMBER) == 1 ){
+    if( m_gpio->Read(GPIO_MAN_GROUNP,GPIO_MAN_NUMBER) == 1 && !isCameraed){
         onV4l2GetJgp();
+
+        //creat lockLogiD root
+        m_ftp->close();
+        mysleep(1000);
+        m_ftp->connectToHost(mqttHostName,21);
+        m_ftp->login("lock_test","Hold?fish:palm");
+        m_ftp->cd(QString::number(deviceId));
+        mysleep(1000);
+        m_ftp->mkdir(QString::number(lockLogId));
+        mysleep(1000);
+        m_ftp->close();
+
+
         onFtpPutFileToServer("./0.jpg");
         mysleep(100);
         onFtpPutFileToServer("./1.jpg");
@@ -469,11 +514,21 @@ void QHLMqtt::timerCamera()
         mysleep(100);
         onFtpPutFileToServer("./5.jpg");
         mysleep(100);
-
+        isCameraed = true;
+        m_timer_camera->start(100);
     }else{
         if( m_gpio->Read(GPIO_LOCK_CHECK_GROUNP,GPIO_LOCK_CHECK_NUMBER) == LOCK_CLOSESTATE_LEVEL){
             // if room is closed
             printf("\r\n close the room\r\n");
+            QString pushData = "{\"deviceid\":";
+            pushData.append( QString::number(deviceId) );
+            pushData.append( ",\"type\":\"lock\",\"state\":\"alreadyClose\",\"index\":" );
+            pushData.append( QString::number(lockIndex) );
+            pushData.append(",\"lockLogId\":");
+            pushData.append( QString::number(lockLogId) );
+            pushData.append("}");
+            onMqttPublishDataToServer(pushData.toUtf8());
+
         }else{
             m_timer_camera->start(100);
         }
@@ -502,7 +557,11 @@ void QHLMqtt::onMqttSubscribeReceive(const QByteArray &message,
             int index = cJSON_GetObjectItem(root,"index")->valueint;
             //TODO open the index lock
             qDebug() << "open lock the index = " << index;
-            onOpenLock(1);
+
+            lockIndex = index;
+            lockLogId = cJSON_GetObjectItem(root,"lockLogId")->valueint;
+
+            onOpenLock(index);
 
         }else if(type == "setip"){
             //TODO

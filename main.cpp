@@ -8,10 +8,6 @@ int main(int argc, char *argv[])
     qDebug() << "------- QHLCameraLock V1 ------- NTSYANS";
 
 
-
-
-
-
     QSettings * configIniRead = new QSettings(QCoreApplication::applicationDirPath() +"/QHLConfig.ini",
                                               QSettings::IniFormat);
     QString hostname = configIniRead->value("serverip").toString();

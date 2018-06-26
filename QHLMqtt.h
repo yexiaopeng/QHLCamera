@@ -70,6 +70,10 @@ public:
     quint16 mqttHostPort;
     quint16 deviceId;
 
+    int lockIndex;
+    quint64 lockLogId;
+
+
     QString mqttSubscribeTopic;
     QString mqttPublishTopic;
 
@@ -77,6 +81,8 @@ public:
 
     //com receive Qstring
     QString receiveDataappend;
+
+    bool isCameraed;
 
 
 public:
