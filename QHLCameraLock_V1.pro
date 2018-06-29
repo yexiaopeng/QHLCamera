@@ -1,5 +1,8 @@
 QT += core network
 QT -= gui
+
+QT+=widgets
+
 #QT += script
 CONFIG += c++11
 QT += serialport

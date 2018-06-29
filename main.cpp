@@ -1,11 +1,15 @@
 #include <QCoreApplication>
 #include "QHLMqtt.h"
-
+#include <QApplication>
 int main(int argc, char *argv[])
 {
-    QCoreApplication a(argc, argv);
-
+   // QCoreApplication a(argc, argv);
+  QApplication a(argc, argv);
     qDebug() << "------- QHLCameraLock V1 ------- NTSYANS";
+
+
+
+
 
 
     QSettings * configIniRead = new QSettings(QCoreApplication::applicationDirPath() +"/QHLConfig.ini",
@@ -54,6 +58,9 @@ int main(int argc, char *argv[])
     hlmqtt.setDeviceId(deviceid);
     hlmqtt.setMqttServerAddr(hostname,hostport);
     hlmqtt.setMqttPublishTopic(mqttPublishTopic);
+
+    hlmqtt.serialOpenCmd();
+
     //hlmqtt.onFtpConnectToServer(); into  onMqttConnectToServer
     hlmqtt.setMqttSubscribeTopic(mqttSubscribeTopic);
     hlmqtt.onMqttConnectToServer();

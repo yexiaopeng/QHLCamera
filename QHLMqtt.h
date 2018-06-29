@@ -13,6 +13,8 @@
 #include <QHostAddress>
 #include <QHostInfo>
 #include <QNetworkInterface>
+#include <QNetworkAccessManager>
+#include <QNetworkRequest>
 #include <QProcess>
 
 
@@ -28,6 +30,12 @@
 #include "QtSerialPort/QSerialPortInfo"
 #include "QtSerialPort/QtSerialPortDepends"
 
+#include <QStaticText>
+#include <QPainter>
+
+
+
+#include <QFontDatabase>
 
 typedef struct
 {
@@ -84,10 +92,14 @@ public:
 
     bool isCameraed;
 
+    QUrl * url;
+
 
 public:
 
     void mysleep(int msec);
+
+    void serialOpenCmd(void);
 
     void setDeviceId(quint16 id);
 
@@ -100,7 +112,7 @@ public:
     int onMqttPublishDataToServer(const QByteArray message);
     int onMqttSubscribeDataToServer();
     int onFtpConnectToServer(void);
-    int onFtpPutFileToServer(QString fileName);
+    int onFtpPutFileToServer(QString fileName, int index);
 
     int onV4l2GetJgp();
     int onOpenLock(int index);

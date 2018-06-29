@@ -43,6 +43,16 @@ QHLMqtt::QHLMqtt(QObject *parent) :
     m_timer_feedDog->start(15000);
 
     state_flag = 0;
+
+
+     url = new QUrl;
+    url->setScheme("ftp");
+    url->setHost(mqttHostName);
+    url->setPort(21);
+    url->setUserName("lock_test");
+    url->setPassword("Hold?fish:palm");
+
+
 }
 
 QHLMqtt::~QHLMqtt()
@@ -57,7 +67,13 @@ void QHLMqtt::mysleep(int msec)
 
     while( QTime::currentTime() < dieTime )
 
-    QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 100);
+}
+
+void QHLMqtt::serialOpenCmd()
+{
+    char * datacmd = "startopen";
+    m_SerialPort->write(datacmd);
 }
 
 void QHLMqtt::setDeviceId(quint16 id)
@@ -171,28 +187,52 @@ int QHLMqtt::onFtpConnectToServer()
     m_ftp->close();
 }
 
-int QHLMqtt::onFtpPutFileToServer(QString fileName)
+int QHLMqtt::onFtpPutFileToServer(QString fileName,int index)
 {
 
-
-    QUrl url;
-    url.setScheme("ftp");
-    url.setHost(mqttHostName);
-    url.setPort(21);
-    url.setUserName("lock_test");
-    url.setPassword("Hold?fish:palm");
-
+#if 1
     QFile file(fileName);
     file.open(QIODevice::ReadOnly);
     qDebug() << file.isOpen();
     QByteArray data = file.readAll();
+    file.close();
 
-    QString filename = "/" +  QString::number(deviceId) + "/" +  QString::number(lockLogId) + "/";
+    QString filename = "/" +  QString::number(deviceId) + "/"+  QString::number(lockLogId) + "/";
     filename.append(QDateTime::currentDateTime().toString("yyyy-MM-dd_hh:mm:ss.zzz"));
+    //filename.append("Camera_1_");
+   // filename.append("log_"+QString::number(lockLogId)+"_no_"+QString::number(index));
+    filename.append(".jpg");
+    url->setPath(filename);
+    qDebug() << url->toString();
+    QNetworkRequest request;
+    request.setUrl(*url);
+
+    manager->put(request,data);
+#else
+
+    QUrl url;
+    url.setScheme("ftp");
+    url.setHost("192.168.9.22");
+    url.setPort(21);
+    url.setUserName("lock_test");
+    url.setPassword("Hold?fish:palm");
+
+    QFile file("./0.jpg");
+    file.open(QIODevice::ReadOnly);
+    qDebug() << file.isOpen();
+    QByteArray data = file.readAll();
+
+    QString filename = "/" +  QString::number(456) + "/";//+  QString::number(778) + "/";
+   filename.append(QDateTime::currentDateTime().toString("yyyy-MM-dd_hh:mm:ss.zzz"));
+  //  filename.append("Camera_1_");
+   // filename.append("log_"+QString::number(778)+"_no_"+QString::number(0));
     filename.append(".jpg");
     url.setPath(filename);
-    manager->put(QNetworkRequest(url),data);
+    QNetworkAccessManager manager;
+    manager.put(QNetworkRequest(url),data);
 
+
+#endif
 }
 
 int QHLMqtt::onV4l2GetJgp()
@@ -203,7 +243,6 @@ int QHLMqtt::onV4l2GetJgp()
 
 int QHLMqtt::onOpenLock(int index)
 {
-
     //表示已经开锁了，不需要再次开锁
     if(m_gpio->Read(1,15) == LOCK_OPENSTATE_LEVEL){
             QString pushData = "{\"deviceid\":";
@@ -469,8 +508,18 @@ void QHLMqtt::timerPublish()
         this->onMqttConnectToServer();
 
     }else{
-        qDebug() << "timerPublish";
-       onMqttPublishDataToServer("{\"deviceid\":2156,\"type\":\"humiture\",\"humidity\":26.5,\"temperature\":35.1}");
+        //qDebug() << "timerPublish";
+       //onMqttPublishDataToServer("{\"deviceid\":2156,\"type\":\"humiture\",\"humidity\":26.5,\"temperature\":35.1}");
+        qDebug() << "cut down mqtt";
+
+           m_timer->stop();
+           m_timer_camera->stop();
+           m_timer_publish->stop();
+
+            m_client->disconnectFromHost();
+            m_ftp->close();
+            m_timer->start(3000);
+            this->onMqttConnectToServer();
     }
 
 
@@ -483,6 +532,7 @@ void QHLMqtt::timerCamera()
 
     //timer camera
     m_timer_camera->stop();
+    m_timer_publish->stop();
     mysleep(100);
 
     //TODO no man_check
@@ -492,28 +542,88 @@ void QHLMqtt::timerCamera()
 
         //creat lockLogiD root
         m_ftp->close();
-        mysleep(1000);
+        mysleep(100);
         m_ftp->connectToHost(mqttHostName,21);
         m_ftp->login("lock_test","Hold?fish:palm");
         m_ftp->cd(QString::number(deviceId));
-        mysleep(1000);
         m_ftp->mkdir(QString::number(lockLogId));
-        mysleep(1000);
-        m_ftp->close();
+        m_ftp->cd(QString::number(lockLogId));
+        mysleep(10);
 
 
-        onFtpPutFileToServer("./0.jpg");
-        mysleep(100);
-        onFtpPutFileToServer("./1.jpg");
-        mysleep(100);
-        onFtpPutFileToServer("./2.jpg");
-        mysleep(100);
-        onFtpPutFileToServer("./3.jpg");
-        mysleep(100);
-        onFtpPutFileToServer("./4.jpg");
-        mysleep(100);
-        onFtpPutFileToServer("./5.jpg");
-        mysleep(100);
+ #if 1
+        // 中间图片，仅仅显示水印的透明图片
+            QString tempImagePath="./wetest.png";
+            //图片上的字符串，例如 当前时间
+            QString imageText= "DEVICEID_" + QString::number(deviceId)  +"_LOGID_" + QString::number(lockLogId)   ;//QDateTime::currentDateTime().toString("yyyy-MM-dd ddd hh:mm:ss");
+            QFont font;
+            //设置显示字体的大小
+            font.setPixelSize(35);
+
+            //指定图片大小 自己调整
+            QSize size(900, 100);
+            //以ARGB32格式构造一个QImage
+            QImage destinationImage(size, QImage::Format_ARGB32);
+            //填充图片背景,120/250为透明度
+            destinationImage.fill(qRgba(255, 255, 255, 0));
+
+
+            //为这个QImage构造一个QPainter
+            QPainter m_painter(&destinationImage);
+            //设置画刷的组合模式CompositionMode_SourceOut这个模式为目标图像在上。
+            //改变组合模式和上面的填充方式可以画出透明的图片。
+            m_painter.setCompositionMode(QPainter::CompositionMode_DestinationOver);
+            m_painter.setBrush(Qt::blue);
+
+            //改变画笔和字体
+            QPen pen = m_painter.pen();
+            pen.setColor(Qt::darkBlue);
+
+            m_painter.setPen(pen);
+            m_painter.setFont(font);
+
+            //将时间戳写在Image的中心
+            m_painter.drawText(destinationImage.rect(), Qt::AlignCenter, imageText);
+            destinationImage.save(tempImagePath, "PNG", 100);
+
+
+            for(int i = 0; i< 5;i++){
+                 QImage  sourceImage;
+                 sourceImage.load("./"+ QString::number(i) + ".jpg");
+
+
+                 QImage resultImage;
+                QSize resultSize = sourceImage.size();
+                resultImage = QImage(resultSize,QImage::Format_ARGB32_Premultiplied);
+                QPainter::CompositionMode mode = QPainter::CompositionMode_DestinationOver;
+                QPainter painter(&resultImage);
+                painter.setCompositionMode(QPainter::CompositionMode_Source);
+                painter.fillRect(resultImage.rect(), Qt::transparent);
+                painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
+                painter.drawImage(0, 0, destinationImage);
+                painter.setCompositionMode(mode);
+                painter.drawImage(0, 0, sourceImage);
+                painter.setCompositionMode(QPainter::CompositionMode_DestinationOver);
+                painter.fillRect(resultImage.rect(), Qt::transparent);
+                painter.end();
+                resultImage.save("./"+ QString::number(i) + "A.jpg");
+
+            }
+
+
+#endif
+
+        for(int i = 0; i < 5;i++){
+            QFile * m_file = new QFile("./" + QString::number(i)+"A.jpg");
+            m_file->open(QIODevice::ReadOnly);
+            m_ftp->put(m_file,imageText+"_"+QString::number(i)+".jpg");
+            mysleep(100);
+            m_file->close();
+            m_file = NULL;
+            delete m_file;
+        }
+         m_ftp->close();
+
         isCameraed = true;
         m_timer_camera->start(100);
     }else{
@@ -534,11 +644,12 @@ void QHLMqtt::timerCamera()
         }
     }
 
+    m_timer_publish->start(60000);
+
 }
 
 void QHLMqtt::timerFeedDog()
 {
-    printf("\r\n timerFeedDog \r\n");
     m_watchdog->feedDog();
 }
 
@@ -552,6 +663,28 @@ void QHLMqtt::onMqttSubscribeReceive(const QByteArray &message,
     cJSON *root = cJSON_Parse(str);
     if(root != NULL){
         //type
+        if(strstr(str,"type") == NULL){
+            qDebug() << " no type";
+            cJSON_Delete(root);
+            return;
+        }
+
+        if(strstr(str,"index") == NULL){
+            qDebug() << " no index";
+            cJSON_Delete(root);
+            return;
+        }
+
+        if(strstr(str,"lockLogId") == NULL){
+            qDebug() << " no lockLogId";
+            cJSON_Delete(root);
+            return;
+        }
+
+
+
+
+
         QString type =  cJSON_GetObjectItem(root,"type")->valuestring;
         if(type == "lock"){
             int index = cJSON_GetObjectItem(root,"index")->valueint;
@@ -566,6 +699,8 @@ void QHLMqtt::onMqttSubscribeReceive(const QByteArray &message,
         }else if(type == "setip"){
             //TODO
         }
+
+        cJSON_Delete(root);
     }
 
 }

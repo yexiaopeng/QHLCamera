@@ -25,7 +25,7 @@ WatchDog::WatchDog(QObject *parent) : QObject(parent)
 
 WatchDog::~WatchDog()
 {
-     close(m_am335x_watchDog_fd);
+    // close(m_am335x_watchDog_fd);
 }
 
 void WatchDog::feedDog()
